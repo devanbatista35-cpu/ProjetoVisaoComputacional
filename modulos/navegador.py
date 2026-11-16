@@ -1,0 +1,151 @@
+import os
+import webbrowser
+
+import cv2
+from pynput.mouse import Controller as Mouse, Button
+
+from .config import (RESOLUCAO_X, RESOLUCAO_Y, CHROME_PATH, NAV_MARGEM,
+                     DESLIZE_DISTANCIA, DESLIZE_TEMPO, BRANCO, VERDE, VERMELHO)
+from .filtros import OneEuro
+from .gestos import tamanho_mao, distancia_polegar_indicador, DetectorDeslize
+from .ui import escreve_centro
+
+AMARELO = (0, 255, 255)
+URL_INICIAL = "https://www.google.com"
+TEMPO_INICIO = 1.5        # s: ignora o deslize no começo (as mãos ainda estão se mexendo)
+TEMPO_PARADO_NO_CLIQUE = 0.25   # s: o cursor fica parado no começo da pinça (o clique não "escorrega")
+
+
+class Navegador:
+    """Abre o navegador e deixa você usá-lo só com as mãos.
+
+    - MÃO DIREITA = mouse: mexer a mão move o cursor; pinça (polegar + indicador) clica;
+      segurar a pinça e mover arrasta.
+    - MÃO ESQUERDA = teclado virtual (o mesmo de sempre): pinça digita, e agora tem ENT e <-.
+      O que você digita vai para a janela que estiver em foco: clique no Chrome antes de escrever.
+    - Passar a mão ABERTA da direita para a esquerda volta para a tela principal.
+
+    Enquanto este modo está ativo a janela do programa vira uma janelinha no canto (sempre por cima),
+    para não cobrir o navegador.
+    """
+
+    janela_compacta = True
+
+    def __init__(self, teclado, tamanho_tela):
+        self.teclado = teclado
+        self.larg_tela, self.alt_tela = tamanho_tela
+        self.mouse = Mouse()
+        self.chrome_aberto = False
+        self.deslize = DetectorDeslize(DESLIZE_DISTANCIA * RESOLUCAO_X, DESLIZE_TEMPO, sentido=-1)
+        self.t_inicio = 0
+        self._zerar_mouse()
+
+    def _zerar_mouse(self):
+        self.filtro_x = OneEuro(1.0, 0.05)
+        self.filtro_y = OneEuro(1.0, 0.05)
+        self.pinca = False
+        self.t_pinca = 0
+        self.pressionado = False
+        self.ponteiro = None    # (x, y) suavizado na imagem da câmera
+
+    def iniciar(self, agora):
+        self.t_inicio = agora
+        self.deslize.resetar()
+        self._zerar_mouse()
+        self._abrir_navegador()
+
+    def cancelar(self):
+        self._soltar()
+
+    def _abrir_navegador(self):
+        if self.chrome_aberto:      # só abre uma vez (abrir de novo criaria outra janela do Chrome)
+            return
+        self.chrome_aberto = True
+        try:
+            if hasattr(os, "startfile") and os.path.exists(CHROME_PATH):
+                os.startfile(CHROME_PATH)
+            else:
+                webbrowser.open(URL_INICIAL)    # Chrome não encontrado: abre o navegador padrão
+        except Exception as erro:
+            print(f"Nao consegui abrir o navegador: {erro}")
+
+    # ------------------------------------------------------------------
+    def _escolher_maos(self, todas_maos):
+        """Retorna (mao_do_teclado, mao_do_mouse)."""
+        if len(todas_maos) >= 2:
+            esquerda, direita = sorted(todas_maos[:2], key=lambda m: m["coordenadas"][0][0])
+            return esquerda, direita
+        if len(todas_maos) == 1:
+            mao = todas_maos[0]
+            return (mao, None) if mao["lado"] == "Left" else (None, mao)
+        return None, None
+
+    def atualizar(self, imagem, todas_maos, agora):
+        """Retorna (imagem, finalizou)."""
+        mao_teclado, mao_mouse = self._escolher_maos(todas_maos)
+
+        if mao_teclado is not None:
+            imagem = self.teclado.atualizar(imagem, mao_teclado, agora)
+        else:
+            self.teclado.desenhar(imagem, agora)    # o teclado fica sempre visível
+
+        self._atualizar_mouse(mao_mouse, agora)
+        self._desenhar_interface(imagem)
+
+        if self.deslize.atualizar(todas_maos, agora) and agora - self.t_inicio > TEMPO_INICIO:
+            return imagem, True
+        return imagem, False
+
+    # ------------------------------------------------------------------
+    def _atualizar_mouse(self, mao, agora):
+        if mao is None:
+            self._soltar()
+            self.pinca = False
+            return
+
+        x, y, _ = mao["coordenadas"][5]     # base do indicador: não se mexe quando você faz a pinça
+        sx = self.filtro_x.filtrar(x, agora)
+        sy = self.filtro_y.filtrar(y, agora)
+        self.ponteiro = (sx, sy)
+
+        tam = tamanho_mao(mao)
+        dist = distancia_polegar_indicador(mao)
+        anterior = self.pinca
+        self.pinca = dist < (0.45 * tam if self.pinca else 0.28 * tam)   # histerese
+
+        if self.pinca and not anterior:
+            self.t_pinca = agora
+            self.mouse.press(Button.left)
+            self.pressionado = True
+        elif not self.pinca and anterior:
+            self._soltar()
+
+        if self.pinca and agora - self.t_pinca < TEMPO_PARADO_NO_CLIQUE:
+            return      # começo da pinça: cursor parado
+
+        # a câmera inteira (menos a margem) vira a tela inteira: não precisa esticar o braço
+        m = NAV_MARGEM
+        nx = min(max((sx / RESOLUCAO_X - m) / (1 - 2 * m), 0.0), 1.0)
+        ny = min(max((sy / RESOLUCAO_Y - m) / (1 - 2 * m), 0.0), 1.0)
+        self.mouse.position = (int(nx * (self.larg_tela - 1)), int(ny * (self.alt_tela - 1)))
+
+    def _soltar(self):
+        if self.pressionado:
+            self.mouse.release(Button.left)
+            self.pressionado = False
+
+    # ------------------------------------------------------------------
+    def _desenhar_interface(self, imagem):
+        m = NAV_MARGEM
+        p1 = (int(m * RESOLUCAO_X), int(m * RESOLUCAO_Y))
+        p2 = (int((1 - m) * RESOLUCAO_X), int((1 - m) * RESOLUCAO_Y))
+        cv2.rectangle(imagem, p1, p2, AMARELO, 2)       # área da câmera que cobre a tela toda
+
+        if self.ponteiro is not None:
+            px, py = int(self.ponteiro[0]), int(self.ponteiro[1])
+            cv2.circle(imagem, (px, py), 16, VERMELHO if self.pinca else VERDE, cv2.FILLED)
+            cv2.circle(imagem, (px, py), 18, BRANCO, 2)
+
+        escreve_centro(imagem, "Dir: mover = cursor | pinca = clicar (segure = arrastar)", 640, 0.8)
+        escreve_centro(imagem, "Esq: teclado (clique no Chrome antes de escrever)", 676, 0.8)
+        escreve_centro(imagem, "Deslize a mao ABERTA p/ esquerda = voltar", 712, 0.8)
