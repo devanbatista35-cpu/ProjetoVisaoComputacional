@@ -42,3 +42,41 @@ class OneEuro:
         velocidade = self.dx.aplicar(velocidade, self._alpha(self.d_cutoff, dt))
         cutoff = self.min_cutoff + self.beta * abs(velocidade)
         return self.x.aplicar(valor, self._alpha(cutoff, dt))
+
+
+class Rolagem:
+    """Converte o movimento vertical da mão em "cliques" da roda do mouse.
+
+    atualizar(y, agora) recebe a altura da mão (pixels da câmera, y cresce para baixo) e devolve o número
+    de passos a rolar neste frame: POSITIVO = rolar para cima (a página sobe), NEGATIVO = para baixo.
+    Mão subindo  -> página sobe | mão descendo -> página desce (com invertido=True, o contrário).
+
+    passo_pixels: quanto a mão precisa andar para gerar 1 passo (MENOR = rola mais rápido).
+    """
+
+    PASSOS_MAX = 5      # limite por frame (evita um pulo enorme se a detecção der um salto)
+
+    def __init__(self, passo_pixels=30, invertido=False):
+        self.passo = max(passo_pixels, 1)
+        self.sinal = -1 if invertido else 1
+        self.filtro = OneEuro(1.0, 0.02)    # tira o tremor da mão parada sem atrasar o movimento
+        self.resetar()
+
+    def resetar(self):
+        self.filtro = OneEuro(1.0, 0.02)
+        self.y_anterior = None
+        self.acumulado = 0.0
+
+    def atualizar(self, y, agora):
+        y = self.filtro.filtrar(y, agora)
+        if self.y_anterior is None:
+            self.y_anterior = y
+            return 0
+        delta = (self.y_anterior - y) * self.sinal      # mão subindo => y diminui => delta positivo
+        self.y_anterior = y
+        self.acumulado += delta
+        passos = int(self.acumulado / self.passo)       # int() corta em direção ao zero
+        if passos:
+            self.acumulado -= passos * self.passo
+            passos = max(-self.PASSOS_MAX, min(self.PASSOS_MAX, passos))
+        return passos
