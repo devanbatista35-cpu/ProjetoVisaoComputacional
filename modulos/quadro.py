@@ -7,7 +7,7 @@ from modulos.config import (RESOLUCAO_X, RESOLUCAO_Y, PAINEL_W, QUADRO_TELA_DIVI
                     DESLIZE_DISTANCIA, DESLIZE_TEMPO)
 from modulos.filtros import OneEuro
 from modulos.gestos import dedos_levantados, alguma_ok, razao_dedo, DetectorDeslize, Retencao
-from modulos.ui import escreve_centro
+from modulos.ui import escreve_centro, desenhar_progresso
 
 LARGURA_BASE = 1280          # largura interna da tela montada (depois ela é ampliada para o monitor)
 BARRA_H = 70
@@ -37,7 +37,7 @@ class Quadro:
         self.estado = None                               # "confirmando" | "desenhando"
         self.t_inicio = 0
         self.tamanho_saida = (RESOLUCAO_X, RESOLUCAO_Y)  # tamanho da tela de exibição (o main atualiza)
-        self.ok = Retencao(TEMPO_CONFIRMACAO)
+        self.ok = Retencao(TEMPO_CONFIRMACAO, tolerancia=0.25)   # tolera falhas rápidas na leitura
         self.limpar = Retencao(0.8)
         self.deslize = DetectorDeslize(DESLIZE_DISTANCIA * RESOLUCAO_X, DESLIZE_TEMPO, sentido=-1)
         self.t_desenho = 0                               # quando o desenho começou
@@ -120,6 +120,8 @@ class Quadro:
         if self.estado == "confirmando":
             escreve_centro(imagem, "Abrir o quadro de desenho?", 600, 1.2)
             escreve_centro(imagem, "Faca OK para confirmar", 650, 1.0, VERDE)
+            if self.ok.progresso(agora) > 0:
+                desenhar_progresso(imagem, "OK detectado... segure", self.ok.progresso(agora))
             if self.ok.atualizar(alguma_ok(todas_maos), agora):
                 self.avatar.esconder()
                 self.estado = "desenhando"

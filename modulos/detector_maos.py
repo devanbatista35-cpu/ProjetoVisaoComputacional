@@ -1,7 +1,11 @@
+import time
+
 import cv2
 import mediapipe as mp
 
 from modulos.config import RESOLUCAO_X, RESOLUCAO_Y
+from modulos.gestos import EstabilizadorLado
+
 
 class DetectorMaos:
     """Encontra as mãos na imagem e devolve as coordenadas em pixels."""
@@ -9,6 +13,7 @@ class DetectorMaos:
     def __init__(self):
         self.mp_maos = mp.solutions.hands
         self.mp_desenho = mp.solutions.drawing_utils
+        self.estabilizador = EstabilizadorLado()   # o rótulo Left/Right não pisca mais
         # model_complexity=0 deixa a detecção bem mais rápida
         self.maos = self.mp_maos.Hands(
             max_num_hands=2,
@@ -39,4 +44,5 @@ class DetectorMaos:
                 todas_maos.append({"coordenadas": coordenadas, "lado": lado})
                 self.mp_desenho.draw_landmarks(imagem, marcacao_maos, self.mp_maos.HAND_CONNECTIONS)
 
+        self.estabilizador.estabilizar(todas_maos, time.time())
         return imagem, todas_maos

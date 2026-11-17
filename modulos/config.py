@@ -53,8 +53,8 @@ VIDEOS = {
 
 # tempos (segundos)
 TEMPO_CONFIRMACAO = 0.4     # quanto tempo segurar o OK
-TEMPO_GESTO = 0.6           # quanto tempo segurar um gesto da mão direita para ativá-lo
-TEMPO_TIMEOUT = 20          # sem resposta, o avatar desiste e volta ao normal
+TEMPO_GESTO = 0.4           # quanto tempo segurar um gesto da mão direita para ativá-lo
+TEMPO_TIMEOUT = 10          # sem resposta, o avatar desiste e volta ao normal
 TEMPO_BLOQUEIO = 2          # pausa depois de sair de um modo
 TEMPO_SAIDA = 0.8           # quanto tempo segurar o sinal de rock para fechar o programa
 DESLIZE_DISTANCIA = 0.30    # no quadro: a mão aberta percorre essa fração da largura da imagem...

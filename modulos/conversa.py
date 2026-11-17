@@ -2,6 +2,7 @@ from modulos.config import VERDE, BRANCO, TEMPO_TIMEOUT
 from modulos.gestos import gesto_joinha, mao_fechada, Retencao
 from modulos.ui import escreve_centro
 
+
 class Conversa:
     """Avatar pergunta se está tudo bem.
 
@@ -16,8 +17,8 @@ class Conversa:
         self.estado = None
         self.t_inicio = 0
         self.t_fim = None
-        self.joinha = Retencao(0.5)
-        self.punho = Retencao(0.6)
+        self.joinha = Retencao(0.5, tolerancia=0.25)
+        self.punho = Retencao(0.6, tolerancia=0.25)
 
     def iniciar(self, agora):
         self.avatar.tocar("pergunta_tudo_bem")

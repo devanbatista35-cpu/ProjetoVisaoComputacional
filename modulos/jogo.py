@@ -3,7 +3,7 @@ from collections import Counter
 
 from modulos.config import BRANCO, VERDE, VERMELHO, TEMPO_CONFIRMACAO, TEMPO_TIMEOUT
 from modulos.gestos import gesto_jogada, alguma_ok, Retencao
-from modulos.ui import escreve_centro
+from modulos.ui import escreve_centro, desenhar_progresso
 
 GANHA_DE = {"pedra": "tesoura", "tesoura": "papel", "papel": "pedra"}
 
@@ -25,7 +25,7 @@ class Jogo:
         self.estado = None
         self.t_inicio = 0
         self.inicio_contagem = 0
-        self.ok = Retencao(TEMPO_CONFIRMACAO)
+        self.ok = Retencao(TEMPO_CONFIRMACAO, tolerancia=0.25)   # tolera falhas rápidas na leitura
         self.gestos_lidos = []
         self.jogada_jogador = None
         self.jogada_avatar = None
@@ -53,6 +53,8 @@ class Jogo:
 
         if self.estado == "pergunta":
             escreve_centro(imagem, "Faca OK com a mao para jogar!", 650, 1.1, VERDE)
+            if self.ok.progresso(agora) > 0:
+                desenhar_progresso(imagem, "OK detectado... segure", self.ok.progresso(agora))
             if self.ok.atualizar(alguma_ok(todas_maos), agora):
                 self.avatar.esconder()
                 self._nova_contagem(agora)

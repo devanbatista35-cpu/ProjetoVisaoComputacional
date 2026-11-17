@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from modulos.config import BRANCO, PRETO, AZUL, RESOLUCAO_X
+from modulos.config import BRANCO, PRETO, AZUL, VERDE, RESOLUCAO_X
 
 
 def escreve_centro(imagem, msg, y, escala=1.5, cor=BRANCO):
@@ -45,3 +45,12 @@ def ajustar_a_tela(imagem, largura, altura):
     y0, x0 = (altura - nova_h) // 2, (largura - nova_w) // 2
     tela[y0:y0 + nova_h, x0:x0 + nova_w] = redimensionada
     return tela
+
+
+def desenhar_progresso(imagem, texto, progresso, cor=VERDE):
+    """Texto + barra de progresso embaixo: mostra que o gesto está sendo lido e quanto falta."""
+    altura, largura = imagem.shape[:2]
+    escreve_centro(imagem, texto, altura - 90, 0.9)
+    x0 = (largura - 400) // 2
+    cv2.rectangle(imagem, (x0, altura - 70), (x0 + 400, altura - 40), BRANCO, 2)
+    cv2.rectangle(imagem, (x0, altura - 70), (x0 + int(400 * progresso), altura - 40), cor, cv2.FILLED)
