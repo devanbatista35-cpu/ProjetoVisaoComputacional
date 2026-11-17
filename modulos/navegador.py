@@ -4,11 +4,11 @@ import webbrowser
 import cv2
 from pynput.mouse import Controller as Mouse, Button
 
-from .config import (RESOLUCAO_X, RESOLUCAO_Y, CHROME_PATH, NAV_MARGEM,
+from modulos.config import (RESOLUCAO_X, RESOLUCAO_Y, CHROME_PATH, NAV_MARGEM,
                      DESLIZE_DISTANCIA, DESLIZE_TEMPO, BRANCO, VERDE, VERMELHO)
-from .filtros import OneEuro
-from .gestos import tamanho_mao, distancia_polegar_indicador, DetectorDeslize
-from .ui import escreve_centro
+from modulos.filtros import OneEuro
+from modulos.gestos import tamanho_mao, distancia_polegar_indicador, DetectorDeslize
+from modulos.ui import escreve_centro
 
 AMARELO = (0, 255, 255)
 URL_INICIAL = "https://www.google.com"
