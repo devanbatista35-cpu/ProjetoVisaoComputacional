@@ -1,7 +1,7 @@
 import os
 import cv2
 
-from modulos.config import RESOLUCAO_X, RESOLUCAO_Y, NAV_LARGURA, NAV_POSICAO
+from modulos.config import RESOLUCAO_X, RESOLUCAO_Y, NAV_ALTURA, NAV_POSICAO
 from modulos.ui import ajustar_a_tela, tamanho_tela
 
 
@@ -33,8 +33,8 @@ class Janela:
         self.tela_larg, self.tela_alt = tamanho_tela()
         self.tela_cheia = True
         self.tipo = None
-        self.nav_larg = NAV_LARGURA
-        self.nav_alt = int(NAV_LARGURA * RESOLUCAO_Y / RESOLUCAO_X)
+        self.nav_larg = int(NAV_ALTURA * RESOLUCAO_X / RESOLUCAO_Y)   # recalculado a partir da imagem do modo
+        self.nav_alt = NAV_ALTURA
         cv2.namedWindow(nome, cv2.WINDOW_NORMAL)
         self._aplicar("cheia")
 
@@ -46,6 +46,12 @@ class Janela:
         return (self.tela_larg, self.tela_alt) if self.tela_cheia else (RESOLUCAO_X, RESOLUCAO_Y)
 
     def mostrar(self, imagem, compacta=False, info=None):
+        if compacta:    # a janelinha tem o formato da imagem do modo (no navegador: teclado + câmera lado a lado)
+            larg = int(round(NAV_ALTURA * imagem.shape[1] / imagem.shape[0]))
+            larg = min(larg, self.tela_larg - 40)
+            if (larg, NAV_ALTURA) != (self.nav_larg, self.nav_alt):
+                self.nav_larg, self.nav_alt = larg, NAV_ALTURA
+                self.tipo = None                      # força reaplicar o tamanho
         desejado = "compacta" if compacta else ("cheia" if self.tela_cheia else "janela")
         if desejado != self.tipo:
             self._aplicar(desejado)

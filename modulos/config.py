@@ -54,7 +54,7 @@ VIDEOS = {
 # tempos (segundos)
 TEMPO_CONFIRMACAO = 0.4     # quanto tempo segurar o OK
 TEMPO_GESTO = 0.4           # quanto tempo segurar um gesto da mão direita para ativá-lo
-TEMPO_TIMEOUT = 10          # sem resposta, o avatar desiste e volta ao normal
+TEMPO_TIMEOUT = 20          # sem resposta, o avatar desiste e volta ao normal
 TEMPO_BLOQUEIO = 2          # pausa depois de sair de um modo
 TEMPO_SAIDA = 0.8           # quanto tempo segurar o sinal de rock para fechar o programa
 DESLIZE_DISTANCIA = 0.30    # no quadro: a mão aberta percorre essa fração da largura da imagem...
@@ -62,6 +62,9 @@ DESLIZE_TEMPO = 0.7         # ...em no máximo esse tempo (s) = "passar a mão" 
 
 # modo navegador (gesto: 2 dedos da mão direita)
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"   # se não existir, abre o navegador padrão
-NAV_LARGURA = 640               # largura da janelinha do programa enquanto você usa o navegador
-NAV_POSICAO = "baixo-direita"   # baixo-direita, baixo-esquerda, cima-direita ou cima-esquerda
+NAV_ALTURA = 300                # altura da janelinha do programa no modo navegador (a largura acompanha: teclado + câmera)
+NAV_POSICAO = "baixo-esquerda"  # baixo-esquerda, baixo-direita, cima-esquerda ou cima-direita
+TECLADO_ZONA = (40, 160)        # onde o teclado "mora" na imagem da câmera (x, y da primeira tecla); a zona aparece em azul claro
+SCROLL_PASSO_PIXELS = 30        # rolagem (mão esquerda, 2 dedos): a cada tantos pixels de movimento da mão, 1 "clique" da roda
+SCROLL_INVERTIDO = False        # False: subir a mão ROLA PARA CIMA (a página sobe). True: o contrário (como no celular)
 NAV_MARGEM = 0.15               # margem da câmera que você não precisa alcançar (a mão cobre a tela sem esticar o braço)
