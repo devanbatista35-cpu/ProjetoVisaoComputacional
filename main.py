@@ -8,12 +8,11 @@ Gestos no modo normal:
   ROCK (indicador+mindinho, segurar 0,8 s) -> fecha o programa em QUALQUER momento, com qualquer mão
   duas mãos abertas (1 s) -> quadro de desenho (avatar pede OK)
 No quadro e no navegador: deslizar a mão ABERTA da direita para a esquerda volta para a tela principal.
-Teclas: Q cancela o modo atual | F tela cheia/janela | + e - espessura do pincel | ESC fecha
-        I mostra FPS e o que o programa está lendo (dedos: indicador, médio, anelar, mindinho; OK sim/não)
+Teclas: Q cancela o modo atual | F tela cheia/janela | + e - espessura do pincel | I mostra FPS | ESC fecha
 """
 import os
 import time
-import cv2
+import cv2  # type: ignore[import-not-found]
 
 from modulos.config import (RESOLUCAO_X, RESOLUCAO_Y, BRANCO, VERDE, VERMELHO, TEMPO_GESTO, TEMPO_BLOQUEIO,
                             TEMPO_SAIDA, AVATAR_LARGURA)
@@ -25,9 +24,8 @@ from modulos.quadro import Quadro
 from modulos.jogo import Jogo
 from modulos.conversa import Conversa
 from modulos.navegador import Navegador
-from modulos.gestos import (dedos_esticados, gesto_ok, mao_aberta, gesto_rock,
-                            EstadoDedos, GestoEstavel, Retencao)
-from modulos.ui import escreve_centro, desenhar_progresso
+from modulos.gestos import dedos_levantados, mao_aberta, gesto_rock, Retencao
+from modulos.ui import escreve_centro
 
 # ---------------- inicialização ----------------
 # No Windows, DirectShow + MJPG costuma dar 30 FPS reais em 720p (o padrão pode ficar em 10-15 FPS)
@@ -55,26 +53,20 @@ modos["quadro"].tamanho_saida = janela.tamanho_exibicao()   # para dividir a tel
 
 modo_atual = None       # None = modo normal (ocioso)
 bloqueio_ate = 0        # evita reativar um gesto logo depois de sair de um modo
-duas_maos = Retencao(1.0, tolerancia=0.2)
-saida_rock = Retencao(TEMPO_SAIDA, tolerancia=0.15)   # sinal de rock segurado = fechar o programa
-dedos_direita = EstadoDedos()                    # estado de cada dedo, com memória (não pisca)
-gesto_direita = GestoEstavel(TEMPO_GESTO, 0.15)  # o gesto só vale depois de estável (tolera falhas rápidas)
-ACOES = {   # gesto da mão direita (indicador, médio, anelar, mindinho) -> (modo, texto de progresso)
-    (True, False, False, False): ("jogo", "Jogo: indicador"),
-    (True, True, True, False): ("conversa", "Conversa: 3 dedos"),
-    (True, True, False, False): ("navegador", "Navegador: 2 dedos"),
-}
+duas_maos = Retencao(1.0)
+saida_rock = Retencao(TEMPO_SAIDA)   # sinal de rock segurado = fechar o programa
+ultimo_gesto = None     # gesto atual da mão direita e desde quando está sendo segurado
+t_gesto = 0
 mostrar_info = False    # tecla I
 fps = 30.0
 t_ultimo_frame = time.time()
 
 
 def iniciar_modo(nome, agora):
-    global modo_atual
+    global modo_atual, ultimo_gesto
     modo_atual = modos[nome]
     modo_atual.iniciar(agora)
-    gesto_direita.resetar()
-    dedos_direita.resetar()
+    ultimo_gesto = None
     duas_maos.resetar()
 
 
@@ -119,24 +111,29 @@ while True:
             mao = todas_maos[0]
 
             if mao["lado"] == "Left":
-                gesto_direita.resetar()
-                dedos_direita.resetar()
+                ultimo_gesto = None
                 imagem = teclado.atualizar(imagem, mao, agora)
 
             else:
-                # o gesto precisa ser SEGURADO (senão dedos levantados em sequência disparariam os gestos
-                # intermediários), mas uma falha rápida da detecção não zera a contagem
-                estavel = gesto_direita.atualizar(dedos_direita.atualizar(mao), agora)
-                if agora > bloqueio_ate:
-                    if estavel in ACOES:
-                        iniciar_modo(ACOES[estavel][0], agora)
-                    elif gesto_direita.candidato in ACOES:   # barra mostrando que o gesto está sendo lido
-                        desenhar_progresso(imagem, ACOES[gesto_direita.candidato][1], gesto_direita.progresso(agora))
+                # o gesto precisa ser SEGURADO, senão dedos levantados em sequência
+                # disparariam os gestos intermediários (ex.: indicador antes dos 3 dedos)
+                gesto = tuple(dedos_levantados(mao))
+                if gesto != ultimo_gesto:
+                    ultimo_gesto = gesto
+                    t_gesto = agora
+                segurou = agora - t_gesto >= TEMPO_GESTO
+
+                if segurou and agora > bloqueio_ate:
+                    if gesto == (True, False, False, False):
+                        iniciar_modo("jogo", agora)
+                    elif gesto == (True, True, True, False):
+                        iniciar_modo("conversa", agora)
+                    elif gesto == (True, True, False, False):
+                        iniciar_modo("navegador", agora)
 
         # ---------- duas mãos: abertas por 1 s abrem o quadro ----------
         elif len(todas_maos) == 2:
-            gesto_direita.resetar()
-            dedos_direita.resetar()
+            ultimo_gesto = None
             abertas = all(mao_aberta(m) for m in todas_maos) and agora > bloqueio_ate
             if duas_maos.atualizar(abertas, agora):
                 iniciar_modo("quadro", agora)
@@ -147,8 +144,7 @@ while True:
                 escreve_centro(imagem, "Segure as duas maos abertas...", 630, 0.9)
 
         else:
-            gesto_direita.resetar()
-            dedos_direita.resetar()
+            ultimo_gesto = None
 
     # avatar por cima de tudo
     imagem = avatar.desenhar(imagem, AVATAR_LARGURA)
@@ -159,12 +155,6 @@ while True:
         cv2.rectangle(imagem, (x0, h_img - 80), (x0 + 400, h_img - 50), BRANCO, 2)
         cv2.rectangle(imagem, (x0, h_img - 80), (x0 + int(400 * saida_rock.progresso(agora)), h_img - 50),
                       VERMELHO, cv2.FILLED)
-
-    if mostrar_info:    # o que o programa está lendo: dedos (indicador, médio, anelar, mindinho) e OK
-        for k, m in enumerate(todas_maos):
-            dedos = "".join("1" if v else "0" for v in dedos_esticados(m))
-            cv2.putText(imagem, f"{m['lado']}: dedos {dedos} | OK: {'SIM' if gesto_ok(m) else 'nao'}",
-                        (20, 40 + 36 * k), cv2.FONT_HERSHEY_SIMPLEX, 0.9, VERDE, 2)
 
     compacta = modo_atual is not None and getattr(modo_atual, "janela_compacta", False)
     janela.mostrar(imagem, compacta, f"FPS: {fps:.0f}" if mostrar_info else None)
