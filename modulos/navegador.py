@@ -1,21 +1,22 @@
 import os
+import subprocess
 import webbrowser
 
 import cv2
 import numpy as np
 from pynput.mouse import Controller as Mouse, Button
 
-from modulos.config import (RESOLUCAO_X, RESOLUCAO_Y, CHROME_PATH, NAV_MARGEM, SCROLL_PASSO_PIXELS, SCROLL_INVERTIDO,
+from modulos.config import (RESOLUCAO_X, RESOLUCAO_Y, CHROME_PATH, NAV_MARGEM,
                      DESLIZE_DISTANCIA, DESLIZE_TEMPO, BRANCO, VERDE, VERMELHO)
-from modulos.filtros import OneEuro, Rolagem
-from modulos.gestos import (tamanho_mao, distancia_polegar_indicador, DetectorDeslize, EstadoDedos, GestoEstavel)
+from modulos.filtros import OneEuro
+from modulos.gestos import (tamanho_mao, distancia_polegar_indicador, DetectorDeslize,
+                            gesto_quatro_dedos, mao_fechada)
 from modulos.ui import escreve_centro
 
 AMARELO = (0, 255, 255)
 URL_INICIAL = "https://www.google.com"
-TEMPO_INICIO = 1.5        # s: ignora o deslize no começo (as mãos ainda estão se mexendo)
+TEMPO_INICIO = 1.5        # s: ignora os gestos de saída no começo
 TEMPO_PARADO_NO_CLIQUE = 0.25   # s: o cursor fica parado no começo da pinça (o clique não "escorrega")
-POSE_ROLAGEM = (True, True, False, False)   # indicador e médio esticados, anelar e mindinho dobrados
 
 
 class Navegador:
@@ -26,9 +27,8 @@ class Navegador:
     - MÃO ESQUERDA = teclado virtual (existe só neste modo): o indicador dentro da "zona do teclado"
       (retângulo azul claro na câmera) escolhe a tecla e a pinça digita. O que você digita vai para a janela
       que estiver em foco: clique no Chrome antes de escrever.
-    - MÃO ESQUERDA com 2 DEDOS (indicador e médio) subindo ou descendo = ROLA a página (o teclado fica em
-      pausa enquanto você rola). A rolagem vai para a janela que estiver sob o cursor.
     - Passar a mão ABERTA da direita para a esquerda volta para a tela principal.
+      Abrir e depois fechar a mão também volta para a tela principal.
 
     Enquanto este modo está ativo a janela do programa vira uma janelinha no canto (sempre por cima):
     o TECLADO fica à ESQUERDA e a imagem da câmera à DIREITA, sem um cobrir o outro.
@@ -43,12 +43,8 @@ class Navegador:
         self.chrome_aberto = False
         self.deslize = DetectorDeslize(DESLIZE_DISTANCIA * RESOLUCAO_X, DESLIZE_TEMPO, sentido=-1)
         self.t_inicio = 0
-        self.dedos_rolagem = EstadoDedos()               # estado dos dedos da mão esquerda (com memória)
-        self.gesto_rolagem = GestoEstavel(0.2, 0.15)     # os 2 dedos precisam ficar estáveis por 0,2 s
-        self.rolagem = Rolagem(SCROLL_PASSO_PIXELS, SCROLL_INVERTIDO)
-        self.rolando = False
-        self.pos_rolagem = None                          # (x, y) da mão que rola, para o desenho
-        self.ultimo_passo = (0, 0)                       # (quando, sentido) do último passo de rolagem
+        self.mao_abriu = False
+        self.tempo_mao_abriu = 0
         self._zerar_mouse()
 
     def _zerar_mouse(self):
@@ -62,10 +58,8 @@ class Navegador:
     def iniciar(self, agora):
         self.t_inicio = agora
         self.deslize.resetar()
-        self.dedos_rolagem.resetar()
-        self.gesto_rolagem.resetar()
-        self.rolagem.resetar()
-        self.rolando = False
+        self.mao_abriu = False
+        self.tempo_mao_abriu = 0
         self._zerar_mouse()
         self._abrir_navegador()
 
@@ -78,9 +72,11 @@ class Navegador:
         self.chrome_aberto = True
         try:
             if hasattr(os, "startfile") and os.path.exists(CHROME_PATH):
-                os.startfile(CHROME_PATH)
+                subprocess.Popen([CHROME_PATH, "--start-maximized", "--new-window", URL_INICIAL],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
             else:
-                webbrowser.open(URL_INICIAL)    # Chrome não encontrado: abre o navegador padrão
+                webbrowser.open(URL_INICIAL, new=1)    # Chrome não encontrado: abre o navegador padrão
         except Exception as erro:
             print(f"Nao consegui abrir o navegador: {erro}")
 
@@ -88,6 +84,13 @@ class Navegador:
     def _escolher_maos(self, todas_maos):
         """Retorna (mao_do_teclado, mao_do_mouse)."""
         if len(todas_maos) >= 2:
+            esquerda = next((mao for mao in todas_maos if mao["lado"] == "Left"), None)
+            direita = next((mao for mao in todas_maos if mao["lado"] == "Right"), None)
+
+            if esquerda is not None and direita is not None:
+                return esquerda, direita
+
+            # Fallback para frames em que o rótulo ainda não estiver disponível.
             esquerda, direita = sorted(todas_maos[:2], key=lambda m: m["coordenadas"][0][0])
             return esquerda, direita
         if len(todas_maos) == 1:
@@ -99,15 +102,16 @@ class Navegador:
         """Retorna (tela, finalizou). A tela tem o teclado à ESQUERDA e a câmera à DIREITA, sem sobreposição."""
         mao_teclado, mao_mouse = self._escolher_maos(todas_maos)
 
-        self.rolando = self._atualizar_rolagem(mao_teclado, agora)
-        self.teclado.atualizar(None if self.rolando else mao_teclado, agora)   # rolando: teclado em pausa
+        self.teclado.atualizar(mao_teclado, agora)
         self._atualizar_mouse(mao_mouse, agora)
 
         self.teclado.desenhar_zona(imagem)      # na câmera: zona do teclado e posição do dedo
-        self._desenhar_interface(imagem, agora) # na câmera: zona e ponteiro do mouse, rolagem, dicas
+        self._desenhar_interface(imagem, agora) # na câmera: zona e ponteiro do mouse
         tela = self._montar(self.teclado.renderizar(agora), imagem)
 
-        if self.deslize.atualizar(todas_maos, agora) and agora - self.t_inicio > TEMPO_INICIO:
+        saiu_por_mao = self._detectar_mao_abriu_fechou(todas_maos, agora)
+        deslizou = self.deslize.atualizar(todas_maos, agora)
+        if agora - self.t_inicio > TEMPO_INICIO and (saiu_por_mao or deslizou):
             return tela, True
         return tela, False
 
@@ -122,28 +126,27 @@ class Navegador:
         return tela
 
     # ------------------------------------------------------------------
-    def _atualizar_rolagem(self, mao, agora):
-        """Mão esquerda com 2 dedos subindo/descendo = rolar a página. Retorna True enquanto está rolando."""
-        if mao is None:
-            self.dedos_rolagem.resetar()
-            self.gesto_rolagem.resetar()
-            self.rolagem.resetar()
+    def _detectar_mao_abriu_fechou(self, todas_maos, agora):
+        """Retorna ao modo principal quando uma mão abre e depois fecha."""
+        if not todas_maos:
+            if self.mao_abriu and agora - self.tempo_mao_abriu > 2.0:
+                self.mao_abriu = False
             return False
 
-        pose = self.dedos_rolagem.atualizar(mao)
-        if self.gesto_rolagem.atualizar(pose, agora) != POSE_ROLAGEM:
-            self.rolagem.resetar()
-            return False
+        for mao in todas_maos:
+            if gesto_quatro_dedos(mao):
+                self.mao_abriu = True
+                self.tempo_mao_abriu = agora
+                return False
 
-        x, y, _ = mao["coordenadas"][9]               # centro da palma: acompanha a mão toda
-        self.pos_rolagem = (x, y)
-        if pose != POSE_ROLAGEM:                       # falha rápida da detecção: mantém, sem rolar neste frame
-            return True
-        passos = self.rolagem.atualizar(y, agora)
-        if passos:
-            self.mouse.scroll(0, passos)               # positivo = rola para cima
-            self.ultimo_passo = (agora, 1 if passos > 0 else -1)
-        return True
+            if self.mao_abriu and mao_fechada(mao):
+                if agora - self.tempo_mao_abriu <= 2.0:
+                    self.mao_abriu = False
+                    return True
+
+        if self.mao_abriu and agora - self.tempo_mao_abriu > 2.0:
+            self.mao_abriu = False
+        return False
 
     # ------------------------------------------------------------------
     def _atualizar_mouse(self, mao, agora):
@@ -196,14 +199,7 @@ class Navegador:
             cv2.circle(imagem, (px, py), 16, VERMELHO if self.pinca else VERDE, cv2.FILLED)
             cv2.circle(imagem, (px, py), 18, BRANCO, 2)
 
-        if self.rolando and self.pos_rolagem is not None:    # indicador de rolagem junto da mão
-            x, y = self.pos_rolagem
-            cv2.putText(imagem, "ROLAGEM", (x - 70, y + 110), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 5)
-            cv2.putText(imagem, "ROLAGEM", (x - 70, y + 110), cv2.FONT_HERSHEY_SIMPLEX, 1.0, VERDE, 2)
-            quando, sentido = self.ultimo_passo
-            if sentido and agora - quando < 0.4:             # seta no sentido em que a página está andando
-                cv2.arrowedLine(imagem, (x, y - sentido * -60), (x, y - sentido * 60), VERDE, 8, tipLength=0.5)
-
-        escreve_centro(imagem, "Dir: cursor | pinca = clique", 628, 0.9)
-        escreve_centro(imagem, "Esq: 2 dedos subindo/descendo = rolar", 666, 0.9)
-        escreve_centro(imagem, "Deslize a mao aberta p/ esquerda = voltar", 704, 0.9)
+        cv2.putText(imagem, "Dir: cursor | pinca = clique", (20, 700),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, BRANCO, 2)
+        cv2.putText(imagem, "Abra e feche a mao para voltar", (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, BRANCO, 2)

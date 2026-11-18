@@ -17,11 +17,11 @@ SUAVIZACAO_VELOCIDADE = 0.03   # MAIOR = menos atraso quando a mão se move ráp
 #   True  = a tela inteira é dividida ao meio, sem faixas pretas (câmera à esquerda, quadro à direita).
 #           A câmera é recortada no centro para ter o mesmo formato do quadro.
 #   False = mostra a câmera inteira, mas sobram faixas pretas em cima e embaixo.
-QUADRO_TELA_DIVIDIDA = True
+QUADRO_TELA_DIVIDIDA = False
 
 # quadro de desenho no modo QUADRO_TELA_DIVIDIDA = False: largura de cada painel (webcam e quadro lado a lado).
 # 640 -> janela de 1280 px. Se a sua tela for grande, pode aumentar (ex.: 800).
-PAINEL_W = 640
+PAINEL_W = 480
 
 # cores (BGR)
 BRANCO = (255, 255, 255)
@@ -62,8 +62,8 @@ DESLIZE_TEMPO = 0.7         # ...em no máximo esse tempo (s) = "passar a mão" 
 
 # modo navegador (gesto: 2 dedos da mão direita)
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"   # se não existir, abre o navegador padrão
-NAV_ALTURA = 300                # altura da janelinha do programa no modo navegador (a largura acompanha: teclado + câmera)
-NAV_POSICAO = "baixo-esquerda"  # baixo-esquerda, baixo-direita, cima-esquerda ou cima-direita
+NAV_ALTURA = 170                # imagem pequena no canto, sem ocupar a tela do navegador
+NAV_POSICAO = "baixo-direita"   # baixo-esquerda, baixo-direita, cima-esquerda ou cima-direita
 TECLADO_ZONA = (40, 160)        # onde o teclado "mora" na imagem da câmera (x, y da primeira tecla); a zona aparece em azul claro
 SCROLL_PASSO_PIXELS = 30        # rolagem (mão esquerda, 2 dedos): a cada tantos pixels de movimento da mão, 1 "clique" da roda
 SCROLL_INVERTIDO = False        # False: subir a mão ROLA PARA CIMA (a página sobe). True: o contrário (como no celular)
